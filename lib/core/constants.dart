@@ -1,6 +1,6 @@
 
 String get baseUrl {
-  return 'http://172.20.10.2:3000/';
+  return 'http://192.168.146.1:3000/';
 }
 
 String todos = "todos/";

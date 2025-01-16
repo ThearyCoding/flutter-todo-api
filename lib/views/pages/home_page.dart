@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_todo_api/bloc/todo_bloc.dart';
 import 'package:flutter_todo_api/routers/app_route.dart';
+import 'package:flutter_todo_api/services/api/sp_service.dart';
 import 'package:go_router/go_router.dart';
 
 class HomePage extends StatefulWidget {
@@ -32,6 +33,13 @@ class _HomePageState extends State<HomePage> {
       appBar: AppBar(
         title: const Text("Todo App"),
         actions: [
+          IconButton(
+              onPressed: () async {
+                await SpService().removeToken();
+                if (!context.mounted) return;
+                context.go(AppPath.auth);
+              },
+              icon: const Icon(Icons.logout)),
           BlocBuilder<TodoBloc, TodoState>(
             builder: (context, state) {
               String currentFilter = 'Show all';

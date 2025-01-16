@@ -11,54 +11,92 @@ class ApiService {
 
   static final ApiService instance = ApiService._singleton();
 
-  Future<Response> request(
-    String endpoint,
-    DioMethod method,
-    Map<String, dynamic> param,
-    String? contentType,
-    formData,
-  ) async {
-    try {
-      final dio = Dio(
-        BaseOptions(
-          baseUrl: baseUrl,
-          contentType: contentType ?? Headers.formUrlEncodedContentType,
-          headers: {
-            HttpHeaders.authorizationHeader: 'Bearer token',
-          },
-        ),
-      );
+  final Dio _dio = Dio(
+    BaseOptions(
+      baseUrl: baseUrl,
+    ),
+  );
 
+  Future<Response> request(
+    String endpoint, {
+    required DioMethod method,
+    Map<String, dynamic>? param,
+    String? contentType,
+    FormData? formData,
+    Map<String, dynamic>? headers,
+  }) async {
+    try {
+      // Set headers
+      _dio.options.headers = {
+        HttpHeaders.authorizationHeader: 'Bearer token',
+        if (headers != null) ...headers,
+      };
+
+      // Set content type if provided
+      if (contentType != null) {
+        _dio.options.contentType = contentType;
+      }
+
+      // Handle different methods
       switch (method) {
         case DioMethod.post:
-          return await dio.post(endpoint, data: param);
+          return await _dio.post(endpoint, data: formData ?? param);
         case DioMethod.get:
-          return await dio.get(endpoint, queryParameters: param);
+          return await _dio.get(endpoint, queryParameters: param);
         case DioMethod.put:
-          return await dio.put(endpoint, data: param);
+          return await _dio.put(endpoint, data: formData ?? param);
         case DioMethod.delete:
-          return await dio.delete(endpoint, data: param);
+          return await _dio.delete(endpoint, data: formData ?? param);
         default:
-          return await dio.post(endpoint, data: param);
+          throw Exception('Unsupported HTTP method');
       }
+    } on DioException catch (e) {
+      _handleDioError(e);
+      rethrow;
     } catch (e) {
-      log('Network error: $e');
-      throw Exception('Network error: $e');
+      log('Unexpected error: $e');
+      throw Exception('Unexpected error: $e');
+    }
+  }
+
+  void _handleDioError(DioException error) {
+    log('Dio error occurred: ${error.type}');
+    switch (error.type) {
+      case DioExceptionType.connectionTimeout:
+        log('Connection timeout: ${error.message}');
+        break;
+      case DioExceptionType.sendTimeout:
+        log('Send timeout: ${error.message}');
+        break;
+      case DioExceptionType.receiveTimeout:
+        log('Receive timeout: ${error.message}');
+        break;
+      case DioExceptionType.badCertificate:
+        log('Invalid certificate: ${error.message}');
+        break;
+      case DioExceptionType.badResponse:
+        log('HTTP error (${error.response?.statusCode}): ${error.response?.data}');
+        break;
+      case DioExceptionType.cancel:
+        log('Request was cancelled: ${error.message}');
+        break;
+      case DioExceptionType.connectionError:
+        log('Network error: ${error.message}');
+        break;
+      case DioExceptionType.unknown:
+        log('Unknown error: ${error.message}');
+        break;
     }
   }
 
   Future<List<TodoModel>> fetchTodos() async {
-    final response = await ApiService.instance.request(
+    final response = await request(
       todos,
-      DioMethod.get,
-      {},
-      null,
-      null,
+      method: DioMethod.get,
     );
 
     if (response.statusCode == HttpStatus.ok) {
       final List<dynamic> jsonData = response.data as List<dynamic>;
-
       return jsonData.map((todo) => TodoModel.fromJson(todo)).toList();
     } else {
       log('Failed to load todos: ${response.statusCode}, ${response.data}');
@@ -69,14 +107,13 @@ class ApiService {
   Future<void> createTodo(TodoModel todo) async {
     final response = await request(
       'todos',
-      DioMethod.post,
-      {
+      method: DioMethod.post,
+      param: {
         'title': todo.title,
         'completed': todo.isCompleted,
-        'description': todo.description
+        'description': todo.description,
       },
-      Headers.jsonContentType,
-      null,
+      contentType: Headers.jsonContentType,
     );
 
     if (response.statusCode == HttpStatus.ok ||
@@ -90,66 +127,52 @@ class ApiService {
   }
 
   Future<void> updateTodo(TodoModel todo) async {
-    try {
-      final response = await request(
-        'todos/${todo.id}',
-        DioMethod.put,
-        {
-          'title': todo.title,
-          'completed': todo.isCompleted,
-          'description': todo.description
-        },
-        Headers.jsonContentType,
-        null,
-      );
+    final response = await request(
+      'todos/${todo.id}',
+      method: DioMethod.put,
+      param: {
+        'title': todo.title,
+        'completed': todo.isCompleted,
+        'description': todo.description,
+      },
+      contentType: Headers.jsonContentType,
+    );
 
-      if (response.statusCode == HttpStatus.ok) {
-        log('Update Todo Successful!');
-      } else {
-        log('Failed to update todo with status code: ${response.statusCode}');
-      }
-    } catch (err) {
-      throw Exception('Failed to update todo: ${err.toString()}');
+    if (response.statusCode == HttpStatus.ok) {
+      log('Update Todo Successful!');
+    } else {
+      log('Failed to update todo: ${response.statusCode}, ${response.data}');
+      throw Exception('Failed to update todo');
     }
   }
 
   Future<void> deleteTodo(String id) async {
-    try {
-      final response = await request(
-        'todos/$id',
-        DioMethod.delete,
-        {},
-        Headers.jsonContentType,
-        null,
-      );
-      if (response.statusCode == HttpStatus.ok ||
-          response.statusCode == HttpStatus.noContent) {
-        log('Todo deleted successfully!');
-      } else {
-        log('Failed to delete todo: ${response.statusCode}, ${response.data}');
-        throw Exception('Failed to delete todo: ${response.statusCode}');
-      }
-    } catch (err) {
-      log('Failed to delete todo: $err');
-      throw Exception('Failed to delete todo: ${err.toString()}');
+    final response = await request(
+      'todos/$id',
+      method: DioMethod.delete,
+      contentType: Headers.jsonContentType,
+    );
+
+    if (response.statusCode == HttpStatus.ok ||
+        response.statusCode == HttpStatus.noContent) {
+      log('Todo deleted successfully!');
+    } else {
+      log('Failed to delete todo: ${response.statusCode}, ${response.data}');
+      throw Exception('Failed to delete todo');
     }
   }
 
   Future<List<TodoModel>> fetchTodosActive() async {
     final response = await request(
       '$todos/active',
-      DioMethod.get,
-      {},
-      null,
-      null,
+      method: DioMethod.get,
     );
 
     if (response.statusCode == HttpStatus.ok) {
-      final List<dynamic> todoJson = response.data as List<dynamic>;
-
-      return todoJson.map((todo) => TodoModel.fromJson(todo)).toList();
+      final List<dynamic> jsonData = response.data as List<dynamic>;
+      return jsonData.map((todo) => TodoModel.fromJson(todo)).toList();
     } else {
-      log('error fetching todo active: ${response.statusCode}');
+      log('Failed to fetch active todos: ${response.statusCode}');
       return [];
     }
   }

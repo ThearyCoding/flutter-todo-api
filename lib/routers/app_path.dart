@@ -1,6 +1,7 @@
 part of 'app_route.dart';
 
 class AppPath {
+  static const auth = "/auth";
   static const home = '/home';
   static const stats = '/stats';
   static const notification = '/notification';
